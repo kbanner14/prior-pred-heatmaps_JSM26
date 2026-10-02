@@ -3,6 +3,7 @@
 #################################
 
 library(tidyverse)
+library(patchwork)
 
 # sampling model for binomial RV
 gen_binom <- function(z, p, nvisit){
@@ -78,7 +79,7 @@ pp_plot <- function(df){
     facet_wrap(~iter) 
 }
 
-# Recreate figure 1
+# Create figure 1
 set.seed(7292025)
 pp_heat_occu <- prior_pred_occu(20)
 
@@ -86,7 +87,20 @@ pp_heat_occu$plot_df |>
   pp_plot() + 
   theme_bw(base_size = 20) 
 
-# Recreate figure 2 
+# how does this translate visually for more sites and more visits? 
+set.seed(10126)
+pp_heat_occu_more_site_visits <- prior_pred_occu(nsim = 20, nvisit = 10, nsite = 100)
+
+# visually still quite useful
+pp_heat_occu_more_site_visits$plot_df |> 
+  # relevel sites and visits
+  mutate(site = factor(site, levels = paste0("S", 1:100)), 
+         visit = factor(visit, levels = paste0("V", 1:10))) |> 
+  pp_plot() + 
+  theme_bw(base_size = 10) 
+
+
+# Create figure 2 
 # function for summarizing the proportion of 
 # sites without variation in the detection history for 
 # a given set of prior predictive datasets
@@ -107,7 +121,7 @@ set.seed(72920252)
 # p ~ beta(1,1) and psi ~ beta(1,1) (default settings for args in prior_pred_occu)
 pp_occu_novar <- prior_pred_occu(100)
 
-# run prior-predictive assesment with T = # of sites with dh of (0,0,0,0) or (1,1,1,1)
+# run prior-predictive assessment with T = # of sites with dh of (0,0,0,0) or (1,1,1,1)
 novar <- prior_pred_novar(pp_occu_novar$plot_df)
 
 # create visualization (Fig 2)
@@ -257,7 +271,7 @@ pp_plot_nmix <- function(df){
     facet_wrap(~iter)
 }
 
-# Recreate figure 3
+# Create Figure 3
 # generate 20 pp datasets with n = 10, J = 4
 # p ~ beta(1,1) and mu ~ gamma(0.001, 0.001) (default settings for args in prior_pred_occu)
 set.seed(52827)
@@ -266,6 +280,49 @@ pp_nmix$plot_df |>
   pp_plot_nmix()+ 
   theme_bw(base_size = 20) 
 
+# How does the prior predictive dataset change when different priors are chosen 
+# hard to disentangle lambda and p, so start by manipulating lambda 
+# Create figure 4
+# generate 20 pp datasets with n = 10, J = 4
+# p ~ beta(1,1) and mu ~ gamma(4, 1) 
+# (expect prior to contribute 4 in total count per one unit of effort) 
+# look at gamma prior 
+curve(dgamma(x, 4, 1), from = 0, to = 20)
+set.seed(10126)
+pp_nmix2 <- prior_pred_nmix(nsim = 20, a_lambda = 4, b_lambda = 1)
+p1_nmix <- pp_nmix2$plot_df |> 
+  pp_plot_nmix()+ 
+  theme_bw(base_size = 20) + 
+  theme(legend.position = "bottom") + 
+  labs(title = TeX("$\\lambda \\sim$ Gamma(4, 1), $p \\sim$ Beta(1,1)"))
+# generate 20 pp datasets with n = 10, J = 4
+# p ~ beta(1,2) and mu ~ gamma(4, 1) 
+# prior on p contributes 9 successes for every 10 
+# look at beta prior
+curve(dbeta(x, 9, 1), from = 0, to = 1)
+pp_nmix3 <- prior_pred_nmix(nsim = 20, a_lambda = 4, b_lambda = 1, 
+                            a_p = 9, b_p = 1)
+p2_nmix <- pp_nmix3$plot_df |> 
+  pp_plot_nmix() +
+  theme_bw(base_size = 20)  + 
+  theme(legend.position = "bottom") + 
+  labs(title = TeX("$\\lambda \\sim$ Gamma(4, 1), $p \\sim$ Beta(9,1)"))
+
+p1_nmix + p2_nmix
+
+ggsave("figure4.png", height = 15, width = 20)
+
+
+
+########################################################
+## Other examples: not included in proceedings paper. ##
+########################################################
+
+###############
+## N-mixture ##
+###############
+
+# Poisson, binom 
 # Another set of 20 with default priors 
 set.seed(52826)
 test <- prior_pred_nmix(nsim = 20)
@@ -273,8 +330,17 @@ test$plot_df |>
   pp_plot_nmix() + 
   theme_bw(base_size = 20) 
 
+# Negative binomial, binom N-mix 
+# default priors from spabundance 
+set.seed(73026)
+test <- prior_pred_nmix(nsim = 20, lhood = "nbinom", a_sig_nb = 0, b_sig_nb = 100)
+test$plot_df |> 
+  pp_plot_nmix() + 
+  theme_bw(base_size = 20)
 
-# Prior predictive check, max count
+# Prior predictive check, max count could be interesting
+# for comparing different sampling models. Might expect NBinom to 
+# produce more variation in max count
 prior_pred_max_count <- function(plot_df, ...){
   df_max <- plot_df |> 
     group_by(iter) |> 
@@ -282,31 +348,27 @@ prior_pred_max_count <- function(plot_df, ...){
   return(df_max)
 }
 
-# prior check, 100 pp datasets Poisson-Nmix with default priors
-set.seed(923)
+# prior check, 1000 pp datasets Poisson-Nmix with default priors
+set.seed(10126)
 pp_max <- prior_pred_nmix(nsim = 1000)
-
 df_pp_max <- prior_pred_max_count(pp_max$plot_df)
 
-df_pp_max |> 
+p1 <- df_pp_max |> 
   ggplot(aes(x = max_y)) + 
-  geom_histogram()
+  geom_histogram() + 
+  labs(title = "Poisson, Nmix")
 
+# compare to 1000 pp datasets. NegBinom N-mix with defalut priors
+pp_max_nb <- prior_pred_nmix(nsim = 1000, lhood = "nbinom", a_sig_nb = 0, b_sig_nb = 100)
 
-# Negative binomial model for N
-set.seed(73026)
-test <- prior_pred_nmix(nsim = 20, lhood = "nbinom", a_sig_nb = 0, b_sig_nb = 100)
+p2 <- pp_max_nb$plot_df |> 
+  prior_pred_max_count() |>
+  ggplot(aes(x = max_y)) + 
+  geom_histogram() + 
+  labs(title = "Negative Binomial, Nmix")
 
-# get all 0s again..,
-test$plot_df |> 
-  pp_plot_nmix() + 
-  theme_bw(base_size = 20) 
+# Not seeing too much difference in max count over 1000 pp datasets
+p1 + p2
 
 ### Comparison of max count sin pp datasets across Poisson-Nmix and NBinom-Nmix 
 # prior check, 100 pp datasets Poisson-Nmix with default priors
-pp_max_nb <- prior_pred_nmix(nsim = 100, lhood = "nbinom", a_sig_nb = 0, b_sig_nb = 100)
-
-pp_max_nb$plot_df |> 
-  prior_pred_max_count() |>
-  ggplot(aes(x = max_y)) + 
-  geom_histogram()
